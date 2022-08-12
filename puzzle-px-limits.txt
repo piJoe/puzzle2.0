@@ -1,0 +1,9 @@
+2048 x 2966 = 6074368px
+/5000 pieces = 1214px pro piece (~ 34x34px)
+
+
+100 pieces = ~246px
+1000 pieces = ~78px
+3000 pieces = ~45px
+
+target: ~ 64*64px per piece!
