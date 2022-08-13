@@ -1,4 +1,4 @@
-import { DataTexture, ShaderMaterial, Texture, Vector2 } from "three";
+import { DataTexture, ShaderMaterial, Vector2 } from "three";
 import {
   vshPositionPuzzleData,
   vshRotateFunc,

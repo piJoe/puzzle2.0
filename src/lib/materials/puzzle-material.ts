@@ -1,12 +1,4 @@
-import {
-  DataTexture,
-  RepeatWrapping,
-  RGBAFormat,
-  ShaderMaterial,
-  Texture,
-  UnsignedByteType,
-  Vector2,
-} from "three";
+import { DataTexture, ShaderMaterial, Texture, Vector2 } from "three";
 import {
   vshPositionPuzzleData,
   vshRotateFunc,
@@ -46,9 +38,9 @@ export class PuzzleMaterial extends ShaderMaterial {
     this.fragmentShader = `
     uniform sampler2D map; 
     varying vec2 uvV;
-    vec4 baseColor;
     void main() {
-        gl_FragColor = texture2D(map, uvV);
+        vec4 baseCol = texture2D(map, uvV);
+        gl_FragColor = baseCol;
     }`;
   }
 

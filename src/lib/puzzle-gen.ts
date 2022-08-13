@@ -151,6 +151,7 @@ interface IPuzzlePiece {
   position: THREE.Vector2;
   center: THREE.Vector2;
   points: THREE.Vector2[];
+  id: number;
 }
 
 function generateGrid(
@@ -212,6 +213,7 @@ function generateGrid(
         position: new THREE.Vector2(),
         center: new THREE.Vector2(),
         points: [],
+        id: 0,
       });
     }
   }
@@ -397,30 +399,6 @@ const pickingScene = new THREE.Scene();
 
 const scene = new THREE.Scene();
 
-const pixelBuffer = new Uint8Array(4);
-let selected = 0;
-// const start = { x: 0, y: 0 };
-// document.querySelector("canvas").addEventListener("mousemove", (e) => {
-//   // console.log(e);
-//   const { x, y } = {
-//     x: e.clientX,
-//     y: e.clientY,
-//   };
-
-//   renderer.readRenderTargetPixels(
-//     pickingTarget,
-//     x,
-//     pickingTarget.height - y,
-//     1,
-//     1,
-//     pixelBuffer
-//   );
-
-//   const id =
-//     (pixelBuffer[0] << 16) | (pixelBuffer[1] << 8) | pixelBuffer[2];
-
-//   selected = id;
-// });
 const selection = document.getElementById("selection")!;
 function renderSelectionArea(posA, posB) {
   const [minX, minY, maxX, maxY] = [
@@ -532,12 +510,15 @@ canvas.addEventListener("mouseup", (e) => {
   const selected = [...ids.keys()];
   console.log(selected);
 
+  for (let p of pieces) {
+    puzzleData.set([p.position.x, p.position.y, p.rotation, 0], p.id * 4);
+  }
   for (const id of selected) {
     if (id > 0) {
       const piece = pieces[id - 1];
       piece.rotation = (piece.rotation + Math.PI / 2) % (Math.PI * 2);
       puzzleData.set(
-        [piece.position.x, piece.position.y, piece.rotation, 0],
+        [piece.position.x, piece.position.y, piece.rotation, 1],
         id * 4
       );
     }
@@ -559,7 +540,7 @@ canvas.addEventListener("mouseup", (e) => {
 
 console.time("puzzlegen");
 // @todo: suggest minimum px density of 64x64px, meaning we set count to (width/64) * (height/64)
-const [sizeX, sizeY, count] = [496, 830, 20000];
+const [sizeX, sizeY, count] = [496, 830, 2000];
 
 const { verticalLines, horizontalLines, pieces, pieceSize } =
   generateGridByRealSize(sizeX, sizeY, count);
@@ -633,6 +614,7 @@ for (let i in pieces) {
   const modelId = id;
   id++;
   const piece = pieces[i];
+  piece.id = modelId;
   const tris = THREE.ShapeUtils.triangulateShape(piece.points, []);
   for (const face of tris) {
     const points = [
