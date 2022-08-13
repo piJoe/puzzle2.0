@@ -482,6 +482,7 @@ function select(startPos, endPos) {
 }
 
 let dragging = false;
+let camDragging = false;
 let startPos = { x: 0, y: 0 };
 let lastPos = new Vector3(0, 0, 0);
 let selected: number[] = [];
@@ -489,6 +490,14 @@ const canvas = document.querySelector("canvas")!;
 canvas.addEventListener("contextmenu", (e) => {
   e.preventDefault();
   e.stopPropagation();
+});
+canvas.addEventListener("wheel", (e) => {
+  console.log(e);
+  e.preventDefault();
+  e.stopPropagation();
+  camera.zoom += e.deltaY * -0.005;
+  if (camera.zoom < 1) camera.zoom = 1;
+  camera.updateProjectionMatrix();
 });
 canvas.addEventListener("mousedown", (e) => {
   e.preventDefault();
@@ -499,9 +508,6 @@ canvas.addEventListener("mousedown", (e) => {
     y: e.clientY,
   };
   startPos = { x, y };
-  lastPos.copy(
-    posToWorldPos(x, y, window.innerWidth, window.innerHeight, camera)
-  );
 
   // selection.classList.toggle("visible", true);
   // renderSelectionArea(startPos, { x, y });
@@ -509,36 +515,55 @@ canvas.addEventListener("mousedown", (e) => {
   selected = select(startPos, startPos);
   console.log(selected);
 
-  if (e.button === 2) {
-    for (const id of selected) {
-      if (id > 0) {
-        const piece = pieces[id - 1];
-        // piece.position.add(moved);
-        piece.rotation = (piece.rotation + Math.PI / 2) % (Math.PI * 2);
-        puzzleData.set(
-          [
-            piece.position.x,
-            piece.position.y,
-            piece.position.z,
-            piece.rotation,
-          ],
-          id * 4
-        );
+  switch (e.button) {
+    case 0: // left-click
+      dragging = true;
+      lastPos.copy(
+        posToWorldPos(x, y, window.innerWidth, window.innerHeight, camera)
+      );
+      break;
+    case 1: // middle-click
+      camDragging = true;
+      lastPos.set(x, y, 0);
+      break;
+    case 2: // right-click
+      for (const id of selected) {
+        if (id > 0) {
+          const piece = pieces[id - 1];
+          // piece.position.add(moved);
+          piece.rotation = (piece.rotation + Math.PI / 2) % (Math.PI * 2);
+          puzzleData.set(
+            [
+              piece.position.x,
+              piece.position.y,
+              piece.position.z,
+              piece.rotation,
+            ],
+            id * 4
+          );
+        }
       }
-    }
-    puzzleDataTex.needsUpdate = true;
-  } else {
-    dragging = true;
+      puzzleDataTex.needsUpdate = true;
+      break;
   }
 });
 canvas.addEventListener(
   "pointermove",
   (e) => {
+    const { x, y } = {
+      x: e.clientX,
+      y: e.clientY,
+    };
+
+    if (camDragging) {
+      const moved = new Vector3(x - lastPos.x, (y - lastPos.y) * -1, 0);
+      lastPos.set(x, y, 0);
+
+      camera.position.sub(moved.divideScalar(camera.zoom));
+      return;
+    }
+
     if (dragging) {
-      const { x, y } = {
-        x: e.clientX,
-        y: e.clientY,
-      };
       const worldPos = posToWorldPos(
         x,
         y,
@@ -583,6 +608,7 @@ canvas.addEventListener("mouseup", (e) => {
   e.preventDefault();
   e.stopPropagation();
   dragging = false;
+  camDragging = false;
   return;
 
   const { x, y } = {

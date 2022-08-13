@@ -1,0 +1,17 @@
+connection logic:
+- globale map aller connectorLines
+- pieces nicht mehr direct die lines haben, sondern referenz auf connectorLines via keys (ids)
+- zusätzlich in jede connectorLine die zugewiesenen pieceIds schreiben
+
+ondrop:
+for(const line of piece.lines) {
+	const neighbourPieces = line.pieces;
+	const selfLine = line.points[0].clone().add(neighbour.position);
+	for (const id of neighbourPieces) {
+		const neighbour = pieces[id];
+		const nLine = line.points[0].clone().add(neighbour.position);
+		if (nLine.distanceTo(selfLine) < IRGENDEIN_WERT) {
+			// connect me up when it's all over! :poggers:
+		}
+	}
+}
