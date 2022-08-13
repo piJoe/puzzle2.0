@@ -1,8 +1,9 @@
 import * as THREE from "three";
 import Prando from "prando";
-import { nextPowerOf2, toVector2 } from "./helper";
+import { nextPowerOf2, posToWorldPos, toVector2 } from "./helper";
 import { PuzzleMaterial } from "./materials/puzzle-material";
 import { PuzzlePickingMaterial } from "./materials/puzzle-picking-material";
+import { Vector2, Vector3 } from "three";
 
 let rng = new Prando("DREIZACKEN");
 // let rng = new Prando();
@@ -433,46 +434,7 @@ function createImageFromTexture(data, width, height) {
     canvas.toDataURL();
 }
 
-let dragging = false;
-let startPos = { x: 0, y: 0 };
-const canvas = document.querySelector("canvas")!;
-canvas.addEventListener("mousedown", (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-
-  const { x, y } = {
-    x: e.clientX,
-    y: e.clientY,
-  };
-  startPos = { x, y };
-  dragging = true;
-
-  selection.classList.toggle("visible", true);
-  renderSelectionArea(startPos, { x, y });
-});
-canvas.addEventListener("mousemove", (e) => {
-  if (dragging) {
-    const { x, y } = {
-      x: e.clientX,
-      y: e.clientY,
-    };
-
-    renderSelectionArea(startPos, { x, y });
-  }
-});
-canvas.addEventListener("mouseup", (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-
-  const { x, y } = {
-    x: e.clientX,
-    y: e.clientY,
-  };
-
-  const endPos = { x, y };
-
-  console.time("selection");
-
+function select(startPos, endPos) {
   const [width, height] = [
     Math.max(1, Math.abs(startPos.x - endPos.x)),
     Math.max(1, Math.abs(startPos.y - endPos.y)),
@@ -507,18 +469,113 @@ canvas.addEventListener("mouseup", (e) => {
       ids.set(id, true);
     }
   }
-  const selected = [...ids.keys()];
+  return [...ids.keys()];
+}
+
+let dragging = false;
+let startPos = { x: 0, y: 0 };
+let lastPos = new Vector3(0, 0, 0);
+let selected: number[] = [];
+const canvas = document.querySelector("canvas")!;
+canvas.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+});
+canvas.addEventListener("mousedown", (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+
+  const { x, y } = {
+    x: e.clientX,
+    y: e.clientY,
+  };
+  startPos = { x, y };
+  lastPos.copy(
+    posToWorldPos(x, y, window.innerWidth, window.innerHeight, camera)
+  );
+
+  // selection.classList.toggle("visible", true);
+  // renderSelectionArea(startPos, { x, y });
+
+  selected = select(startPos, startPos);
   console.log(selected);
 
-  for (let p of pieces) {
-    puzzleData.set([p.position.x, p.position.y, p.rotation, 0], p.id * 4);
+  if (e.button === 2) {
+    for (const id of selected) {
+      if (id > 0) {
+        const piece = pieces[id - 1];
+        // piece.position.add(moved);
+        piece.rotation = (piece.rotation + Math.PI / 2) % (Math.PI * 2);
+        puzzleData.set(
+          [piece.position.x, piece.position.y, piece.rotation, 0],
+          id * 4
+        );
+      }
+    }
+    puzzleDataTex.needsUpdate = true;
+  } else {
+    dragging = true;
   }
+});
+canvas.addEventListener("mousemove", (e) => {
+  if (dragging) {
+    const { x, y } = {
+      x: e.clientX,
+      y: e.clientY,
+    };
+    const worldPos = posToWorldPos(
+      x,
+      y,
+      window.innerWidth,
+      window.innerHeight,
+      camera
+    );
+
+    const moved = new Vector2(worldPos.x - lastPos.x, worldPos.y - lastPos.y);
+    lastPos.copy(worldPos);
+
+    for (const id of selected) {
+      if (id > 0) {
+        const piece = pieces[id - 1];
+        piece.position.add(moved);
+        // piece.rotation = (piece.rotation + Math.PI / 2) % (Math.PI * 2);
+        puzzleData.set(
+          [piece.position.x, piece.position.y, piece.rotation, 0],
+          id * 4
+        );
+      }
+    }
+    puzzleDataTex.needsUpdate = true;
+
+    // renderSelectionArea(startPos, { x, y });
+  }
+});
+canvas.addEventListener("mouseup", (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  dragging = false;
+  return;
+
+  const { x, y } = {
+    x: e.clientX,
+    y: e.clientY,
+  };
+
+  const endPos = { x, y };
+
+  console.time("selection");
+
+  const selected = select(startPos, endPos);
+
+  // for (let p of pieces) {
+  //   puzzleData.set([p.position.x, p.position.y, p.rotation, 0], p.id * 4);
+  // }
   for (const id of selected) {
     if (id > 0) {
       const piece = pieces[id - 1];
       piece.rotation = (piece.rotation + Math.PI / 2) % (Math.PI * 2);
       puzzleData.set(
-        [piece.position.x, piece.position.y, piece.rotation, 1],
+        [piece.position.x, piece.position.y, piece.rotation, 0],
         id * 4
       );
     }
