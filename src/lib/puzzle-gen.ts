@@ -1,9 +1,11 @@
 import * as THREE from "three";
 import Prando from "prando";
 import { nextPowerOf2, toVector2 } from "./helper";
+import { PuzzleMaterial } from "./materials/puzzle-material";
+import { PuzzlePickingMaterial } from "./materials/puzzle-picking-material";
 
-// let rng = new Prando("DREIZACKEN");
-let rng = new Prando();
+let rng = new Prando("DREIZACKEN");
+// let rng = new Prando();
 
 function createPuzzleConn(
   startPoint: THREE.Vector2,
@@ -30,7 +32,8 @@ function createPuzzleConn(
   const nipJitter = rng.next(-0.05, 0.05);
   const nipStartJitter = nipJitter * rng.next(0.5, 1);
   const nipEndJitter = nipJitter * rng.next(0.5, 1);
-  const distortY = -curveDir * rng.next() * 0.02;
+  const distortYVal = -curveDir * (rng.next(0.01, 0.05) * connLen);
+  const distortY = normal.clone().setLength(distortYVal);
   const neckLength = 0.25;
 
   // STEP 2: get start/end of mid-piece
@@ -98,10 +101,10 @@ function createPuzzleConn(
   ];
 
   toDistort.forEach((p) => {
-    p.add(normal.clone().setLength(distortY));
+    p.add(distortY);
   });
   toDistort.forEach((p) => {
-    const distortX = -0.005 + rng.next() * 0.01;
+    const distortX = rng.next(-0.005, 0.005) * connLen;
     p.add(parallel.clone().setLength(distortX));
   });
 
@@ -394,98 +397,6 @@ const pickingScene = new THREE.Scene();
 
 const scene = new THREE.Scene();
 
-const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
-const materialBlue = new THREE.LineBasicMaterial({ color: 0x4488ff });
-const materialRed = new THREE.LineBasicMaterial({ color: 0xff3344 });
-
-const vertexShaderRotateFunc = `
-      mat3 rotation3dZ(float angle) {
-        float s = sin(angle);
-        float c = cos(angle);
-
-        return mat3(
-          c, s, 0.0,
-          -s, c, 0.0,
-          0.0, 0.0, 1.0
-        );
-      }
-      `;
-
-const vertexShaderPosition = `
-      vec3 pos = position.xyz * rotation3dZ(pieceRotation);
-      vec4 mvPosition = modelViewMatrix * vec4( pos, 1.0 );
-      vec4 mvPositionWorld = mvPosition + vec4( piecePosition, 0.0, 0.0 );
-      gl_Position = projectionMatrix * mvPositionWorld;`;
-
-const vertexShaderPositionPuzzleData = `
-      vec4 piece = pieceData(modelId);
-      vec3 pos = position.xyz * rotation3dZ(piece.z);
-      vec4 mvPosition = modelViewMatrix * vec4( pos, 1.0 );
-      vec4 mvPositionWorld = mvPosition + vec4( piece.x, piece.y, 0.0, 0.0 );
-      gl_Position = projectionMatrix * mvPositionWorld;`;
-
-const vshModelIds = `
-      attribute float modelId;
-      vec3 modelToColor(float f) {
-        vec3 color;
-        color.r = floor(f / 256.0 / 256.0);
-        color.g = floor((f - color.r * 256.0 * 256.0) / 256.0);
-        color.b = floor(f - color.r * 256.0 * 256.0 - color.g * 256.0);
-        return color / 255.0;
-      }
-      `;
-
-const vshPuzzleDataFunc = `
-      uniform vec2 puzzleDataSize;
-      uniform sampler2D puzzleDataTex;
-      vec4 pieceData(float id) {
-        float col = mod(id, puzzleDataSize.x);
-        float row = floor(id / puzzleDataSize.x);
-        float oneHPixel = 1. / puzzleDataSize.x;
-        vec2 pUV = vec2((col + 0.5) / puzzleDataSize.x, (row + 0.5) / puzzleDataSize.y);
-        return texture2D(puzzleDataTex, pUV);
-      }
-      `;
-
-const materialTestPos = new THREE.ShaderMaterial({
-  vertexShader: `
-      attribute vec2 piecePosition;
-      attribute float pieceRotation;
-      ${vertexShaderRotateFunc}
-      varying vec3 modelIdV;
-      ${vshModelIds}
-      ${vshPuzzleDataFunc}
-
-      void main() {
-        modelIdV = modelToColor(modelId);
-        ${vertexShaderPositionPuzzleData}
-      }`,
-  fragmentShader: `
-      varying highp vec3 modelIdV;
-      void main() {
-        gl_FragColor = vec4(modelIdV, 1.0);
-      }`,
-});
-materialTestPos.onBeforeCompile = (s) => {
-  s.uniforms.puzzleDataSize = { value: material.userData.puzzleDataSize };
-  s.uniforms.puzzleDataTex = { value: material.userData.puzzleDataTex };
-};
-
-material.onBeforeCompile = (s) => {
-  s.uniforms.puzzleDataSize = { value: material.userData.puzzleDataSize };
-  s.uniforms.puzzleDataTex = { value: material.userData.puzzleDataTex };
-  s.vertexShader =
-    `
-          attribute float modelId;
-          ${vshPuzzleDataFunc}
-          ${vertexShaderRotateFunc}\n` + s.vertexShader;
-  s.vertexShader = s.vertexShader.replace(
-    "#include <project_vertex>",
-    vertexShaderPositionPuzzleData
-  );
-  console.log(s.uniforms);
-};
-
 const pixelBuffer = new Uint8Array(4);
 let selected = 0;
 // const start = { x: 0, y: 0 };
@@ -642,27 +553,19 @@ canvas.addEventListener("mouseup", (e) => {
   dragging = false;
 });
 
-loader.load("/imgs/sailormoon.jpg", (texture) => {
-  texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  texture.minFilter = THREE.LinearFilter;
-  texture.needsUpdate = true;
-  material.map = texture;
-  material.needsUpdate = true;
-});
-
 // =============================================
 // GRID GEDÖHNS
 // =============================================
 
 console.time("puzzlegen");
 // @todo: suggest minimum px density of 64x64px, meaning we set count to (width/64) * (height/64)
-const [sizeX, sizeY, count] = [496, 830, 1000];
+const [sizeX, sizeY, count] = [496, 830, 20000];
 
 const { verticalLines, horizontalLines, pieces, pieceSize } =
   generateGridByRealSize(sizeX, sizeY, count);
 
 // refocus camera
-camera.position.set(sizeX / 1.5, sizeY / 1.25, sizeX);
+camera.position.set(sizeX / 1.5, sizeY / 1.25, 200);
 camera.lookAt(sizeX / 1.5, sizeY / 1.25, 0);
 
 const allLines = [...verticalLines, ...horizontalLines];
@@ -671,7 +574,6 @@ for (let l of allLines) {
     const [start, end] = [l.points[0], l.points[1]];
     randomMove(l.points[0], l.points[1]);
     const points = createPuzzleConn(l.points[0], l.points[1]);
-    // l.points = points;
 
     // round off our newly create points
     const curve = new THREE.SplineCurve(points.slice(1, -1));
@@ -697,10 +599,8 @@ for (const piece of pieces) {
   // clone every point so we are free to modify without breaking shit
   points = points.map((p) => p.clone());
 
-  // calculate final position based on first point
-  // piece.position = points[0].clone();
-
   // calculate border box and center point
+  // @todo: see if this is really true, probably we need another function for calculating the bb
   const bb = new THREE.Box2().setFromPoints(
     piece.lines.map((line) => line.points[0])
   );
@@ -710,13 +610,11 @@ for (const piece of pieces) {
     Math.ceil((Math.random() * 360) / 90) * 90
   );
 
-  // subtract final position from every vertex (effectively setting every vertex' origin to 0,0)
-  // for (const p of points) {
-  //   p.sub(piece.position);
-  // }
-
   piece.points = offsetPuzzlePoints(points, -0.005 * pieceSize.x);
-  // piece.points = points;
+}
+// cleanup line point allocations (no longer needed)
+for (let l of allLines) {
+  l.points = [];
 }
 console.timeEnd("puzzlegen");
 
@@ -743,7 +641,7 @@ for (let i in pieces) {
       piece.points[face[2]],
     ];
 
-    // add to vertices array
+    // add to vertices array, subtract center position
     verticesArr.push(
       points[0].x - piece.center.x,
       points[0].y - piece.center.y,
@@ -775,6 +673,8 @@ for (let i in pieces) {
       modelId * 4
     );
   }
+  // cleanup piece point allocations (no longer needed)
+  piece.points = [];
 }
 
 const vertices = Float32Array.from(verticesArr);
@@ -791,21 +691,24 @@ const puzzleDataTex = new THREE.DataTexture(
   THREE.FloatType
 );
 puzzleDataTex.needsUpdate = true;
-material.userData.puzzleDataTex = puzzleDataTex;
-material.userData.puzzleDataSize = new THREE.Vector2(
-  puzzleDataSize,
-  puzzleDataSize
-);
-materialTestPos.userData.puzzleDataTex = puzzleDataTex;
-materialTestPos.userData.puzzleDataSize = new THREE.Vector2(
-  puzzleDataSize,
-  puzzleDataSize
-);
 
-const mesh = new THREE.Mesh(geometry, material);
+const puzzleSize = new THREE.Vector2(puzzleDataSize, puzzleDataSize);
+const m = new PuzzleMaterial(puzzleSize, puzzleDataTex);
+
+loader.load("/imgs/sailormoon.jpg", (texture) => {
+  texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  texture.minFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
+  m.updateMap(texture);
+});
+
+const mesh = new THREE.Mesh(geometry, m);
 mesh.frustumCulled = false;
 scene.add(mesh);
-const pickMesh = new THREE.Mesh(geometry, materialTestPos);
+const pickMesh = new THREE.Mesh(
+  geometry,
+  new PuzzlePickingMaterial(puzzleSize, puzzleDataTex)
+);
 pickMesh.frustumCulled = false;
 pickingScene.add(pickMesh);
 
