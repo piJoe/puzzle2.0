@@ -3,7 +3,7 @@ import Prando from "prando";
 import { nextPowerOf2, posToWorldPos, toVector2 } from "./helper";
 import { PuzzleMaterial } from "./materials/puzzle-material";
 import { PuzzlePickingMaterial } from "./materials/puzzle-picking-material";
-import { Vector2, Vector3 } from "three";
+import { OrthographicCamera, Vector2, Vector3 } from "three";
 
 let rng = new Prando("DREIZACKEN");
 // let rng = new Prando();
@@ -149,7 +149,7 @@ interface IConnectorLine {
 interface IPuzzlePiece {
   lines: IConnectorLine[];
   rotation: number;
-  position: THREE.Vector2;
+  position: THREE.Vector3;
   center: THREE.Vector2;
   points: THREE.Vector2[];
   id: number;
@@ -211,7 +211,7 @@ function generateGrid(
           horizontalLines[x * (sizeY + 1) + y],
         ],
         rotation: 0,
-        position: new THREE.Vector2(),
+        position: new THREE.Vector3(),
         center: new THREE.Vector2(),
         points: [],
         id: 0,
@@ -381,12 +381,21 @@ const pickingTarget = new THREE.WebGLRenderTarget(
   }
 );
 
-const camera = new THREE.PerspectiveCamera(
-  45,
-  window.innerWidth / window.innerHeight,
-  1,
+// const camera = new THREE.PerspectiveCamera(
+//   45,
+//   window.innerWidth / window.innerHeight,
+//   1,
+//   10000
+// );
+const camera = new OrthographicCamera(
+  window.innerWidth / -2,
+  window.innerWidth / 2,
+  window.innerHeight / 2,
+  window.innerHeight / -2,
+  0,
   10000
 );
+camera.position.setZ(100);
 
 window.addEventListener("resize", onWindowResize, false);
 function onWindowResize() {
@@ -507,7 +516,12 @@ canvas.addEventListener("mousedown", (e) => {
         // piece.position.add(moved);
         piece.rotation = (piece.rotation + Math.PI / 2) % (Math.PI * 2);
         puzzleData.set(
-          [piece.position.x, piece.position.y, piece.rotation, 0],
+          [
+            piece.position.x,
+            piece.position.y,
+            piece.position.z,
+            piece.rotation,
+          ],
           id * 4
         );
       }
@@ -517,39 +531,54 @@ canvas.addEventListener("mousedown", (e) => {
     dragging = true;
   }
 });
-canvas.addEventListener("mousemove", (e) => {
-  if (dragging) {
-    const { x, y } = {
-      x: e.clientX,
-      y: e.clientY,
-    };
-    const worldPos = posToWorldPos(
-      x,
-      y,
-      window.innerWidth,
-      window.innerHeight,
-      camera
-    );
+canvas.addEventListener(
+  "pointermove",
+  (e) => {
+    if (dragging) {
+      const { x, y } = {
+        x: e.clientX,
+        y: e.clientY,
+      };
+      const worldPos = posToWorldPos(
+        x,
+        y,
+        window.innerWidth,
+        window.innerHeight,
+        camera
+      );
 
-    const moved = new Vector2(worldPos.x - lastPos.x, worldPos.y - lastPos.y);
-    lastPos.copy(worldPos);
+      const moved = new Vector3(
+        worldPos.x - lastPos.x,
+        worldPos.y - lastPos.y,
+        0
+      );
+      lastPos.copy(worldPos);
 
-    for (const id of selected) {
-      if (id > 0) {
-        const piece = pieces[id - 1];
-        piece.position.add(moved);
-        // piece.rotation = (piece.rotation + Math.PI / 2) % (Math.PI * 2);
+      for (const piece of pieces) {
+        const id = piece.id;
+        if (selected.includes(id)) {
+          piece.position.add(moved).setZ(0.1);
+          // piece.rotation = (piece.rotation + Math.PI / 2) % (Math.PI * 2);
+        } else {
+          piece.position.setZ(0.0);
+        }
         puzzleData.set(
-          [piece.position.x, piece.position.y, piece.rotation, 0],
+          [
+            piece.position.x,
+            piece.position.y,
+            piece.position.z,
+            piece.rotation,
+          ],
           id * 4
         );
       }
-    }
-    puzzleDataTex.needsUpdate = true;
+      puzzleDataTex.needsUpdate = true;
 
-    // renderSelectionArea(startPos, { x, y });
-  }
-});
+      // renderSelectionArea(startPos, { x, y });
+    }
+  },
+  { passive: true }
+);
 canvas.addEventListener("mouseup", (e) => {
   e.preventDefault();
   e.stopPropagation();
@@ -567,15 +596,12 @@ canvas.addEventListener("mouseup", (e) => {
 
   const selected = select(startPos, endPos);
 
-  // for (let p of pieces) {
-  //   puzzleData.set([p.position.x, p.position.y, p.rotation, 0], p.id * 4);
-  // }
   for (const id of selected) {
     if (id > 0) {
       const piece = pieces[id - 1];
       piece.rotation = (piece.rotation + Math.PI / 2) % (Math.PI * 2);
       puzzleData.set(
-        [piece.position.x, piece.position.y, piece.rotation, 0],
+        [piece.position.x, piece.position.y, piece.position.z, piece.rotation],
         id * 4
       );
     }
@@ -597,14 +623,14 @@ canvas.addEventListener("mouseup", (e) => {
 
 console.time("puzzlegen");
 // @todo: suggest minimum px density of 64x64px, meaning we set count to (width/64) * (height/64)
-const [sizeX, sizeY, count] = [496, 830, 2000];
+const [sizeX, sizeY, count] = [496, 830, 200];
 
 const { verticalLines, horizontalLines, pieces, pieceSize } =
   generateGridByRealSize(sizeX, sizeY, count);
 
 // refocus camera
-camera.position.set(sizeX / 1.5, sizeY / 1.25, 200);
-camera.lookAt(sizeX / 1.5, sizeY / 1.25, 0);
+// camera.position.set(sizeX / 1.5, sizeY / 1.25, 50);
+// camera.lookAt(sizeX / 1.5, sizeY / 1.25, 0);
 
 const allLines = [...verticalLines, ...horizontalLines];
 for (let l of allLines) {
@@ -618,6 +644,8 @@ for (let l of allLines) {
     l.points = [start, ...curve.getPoints(20), end];
   }
 }
+
+const tableSize = { topLeft: new Vector2(), bottomRight: new Vector2() };
 
 for (const piece of pieces) {
   let points: THREE.Vector2[] = [];
@@ -643,18 +671,42 @@ for (const piece of pieces) {
     piece.lines.map((line) => line.points[0])
   );
   piece.center = bb.getCenter(new THREE.Vector2());
-  piece.position = piece.center.clone().multiplyScalar(1.6);
+  const pos = piece.center.clone().multiplyScalar(1.6);
+  piece.position.set(pos.x, pos.y, 0);
   piece.rotation = THREE.MathUtils.degToRad(
     Math.ceil((Math.random() * 360) / 90) * 90
   );
 
   piece.points = offsetPuzzlePoints(points, -0.005 * pieceSize.x);
+
+  if (piece.position.x < tableSize.topLeft.x) {
+    tableSize.topLeft.x = piece.position.x;
+  }
+  if (piece.position.y < tableSize.topLeft.y) {
+    tableSize.topLeft.y = piece.position.y;
+  }
+  if (piece.position.x > tableSize.topLeft.x) {
+    tableSize.bottomRight.x = piece.position.x;
+  }
+  if (piece.position.y > tableSize.topLeft.y) {
+    tableSize.bottomRight.y = piece.position.y;
+  }
 }
 // cleanup line point allocations (no longer needed)
 for (let l of allLines) {
   l.points = [];
 }
 console.timeEnd("puzzlegen");
+
+console.log(tableSize);
+
+// recenter camera
+window.camera = camera;
+// camera.left = tableSize.topLeft.x;
+// camera.top = tableSize.topLeft.y;
+// camera.right = tableSize.bottomRight.x;
+// camera.bottom = tableSize.bottomRight.y;
+// camera.updateProjectionMatrix();
 
 console.time("render");
 const geometry = new THREE.BufferGeometry();
@@ -708,7 +760,7 @@ for (let i in pieces) {
 
     // set everything in puzzleData texture
     puzzleData.set(
-      [piece.position.x, piece.position.y, piece.rotation, 0],
+      [piece.position.x, piece.position.y, piece.position.z, piece.rotation],
       modelId * 4
     );
   }

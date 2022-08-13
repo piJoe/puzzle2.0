@@ -19,9 +19,9 @@ gl_Position = projectionMatrix * mvPositionWorld;`;
 
 export const vshPositionPuzzleData = `
 vec4 piece = pieceData(modelId);
-vec3 pos = position.xyz * rotation3dZ(piece.z);
+vec3 pos = position.xyz * rotation3dZ(piece.a);
 vec4 mvPosition = modelViewMatrix * vec4( pos, 1.0 );
-vec4 mvPositionWorld = mvPosition + vec4( piece.x, piece.y, 0.0, 0.0 );
+vec4 mvPositionWorld = mvPosition + vec4(piece.xyz, 0.);
 gl_Position = projectionMatrix * mvPositionWorld;`;
 
 export const vshModelIds = `
