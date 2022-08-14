@@ -3,7 +3,13 @@ import Prando from "prando";
 import { nextPowerOf2, posToWorldPos, toVector2 } from "./helper";
 import { PuzzleMaterial } from "./materials/puzzle-material";
 import { PuzzlePickingMaterial } from "./materials/puzzle-picking-material";
-import { OrthographicCamera, Vector2, Vector3 } from "three";
+import {
+  MeshBasicMaterial,
+  OrthographicCamera,
+  SphereGeometry,
+  Vector2,
+  Vector3,
+} from "three";
 
 let rng = new Prando("DREIZACKEN");
 // let rng = new Prando();
@@ -144,6 +150,7 @@ interface IConnectorLine {
   isBorder: boolean;
   // isBorder: x === 0 || x === sizeX || Math.random() > 0.9,
   connectionId: number;
+  neighbours: IPuzzlePiece[];
 }
 
 interface IPuzzlePiece {
@@ -177,22 +184,24 @@ function generateGrid(
     for (let y = 0; y <= sizeY; y++) {
       // vertical
       if (y < sizeY) {
-        const line = {
+        const line: IConnectorLine = {
           points: [points[x][y], points[x][y + 1]],
           isBorder: !borderless ? x === 0 || x === sizeX : false,
           // isBorder: x === 0 || x === sizeX || Math.random() > 0.9,
           connectionId: id++,
+          neighbours: [],
         };
         verticalLines.push(line);
       }
 
       // horizontal
       if (x < sizeX) {
-        const line = {
+        const line: IConnectorLine = {
           points: [points[x][y], points[x + 1][y]],
           isBorder: !borderless ? y === 0 || y === sizeY : false,
           // isBorder: y === 0 || y === sizeY || Math.random() > 0.9,
           connectionId: id++,
+          neighbours: [],
         };
         horizontalLines.push(line);
       }
@@ -644,23 +653,36 @@ canvas.addEventListener("mouseup", (e) => {
   e.stopPropagation();
   dragging = false;
   camDragging = false;
-  return;
-
-  const { x, y } = {
-    x: e.clientX,
-    y: e.clientY,
-  };
-
-  const endPos = { x, y };
-
-  console.time("selection");
-
-  const selected = select(startPos, endPos);
 
   for (const id of selected) {
     if (id > 0) {
       const piece = pieces[id - 1];
-      piece.rotation = (piece.rotation + Math.PI / 2) % (Math.PI * 2);
+
+      // find all neighbours by piece.lines
+      for (const l of piece.lines) {
+        const neighbour = l.neighbours.find((p) => p !== piece);
+        if (!neighbour) continue;
+
+        // snap to first neighbour
+        const neighbourSnap = l.points[0]
+          .clone()
+          .sub(neighbour.center)
+          .add(neighbour.position);
+        const mySnap = l.points[0]
+          .clone()
+          .sub(piece.center)
+          .add(piece.position);
+
+        // snapA.position.set(neighbourSnap.x, neighbourSnap.y, 1);
+        // snapB.position.set(mySnap.x, mySnap.y, 1);
+
+        piece.position.add(neighbourSnap.sub(mySnap) as unknown as Vector3);
+        // console.log(neighbourSnap, mySnap);
+
+        break;
+      }
+
+      piece.position.setZ(0.0);
       puzzleData.set(
         [piece.position.x, piece.position.y, piece.position.z, piece.rotation],
         id * 4
@@ -668,14 +690,39 @@ canvas.addEventListener("mouseup", (e) => {
     }
   }
   puzzleDataTex.needsUpdate = true;
+  selected = [];
+  return;
 
-  console.timeEnd("selection");
+  // const { x, y } = {
+  //   x: e.clientX,
+  //   y: e.clientY,
+  // };
 
-  // const id =
-  //   (pixelBuffer[0] << 16) | (pixelBuffer[1] << 8) | pixelBuffer[2];
+  // const endPos = { x, y };
 
-  selection.classList.toggle("visible", false);
-  dragging = false;
+  // console.time("selection");
+
+  // const selected = select(startPos, endPos);
+
+  // for (const id of selected) {
+  //   if (id > 0) {
+  //     const piece = pieces[id - 1];
+  //     piece.rotation = (piece.rotation + Math.PI / 2) % (Math.PI * 2);
+  //     puzzleData.set(
+  //       [piece.position.x, piece.position.y, piece.position.z, piece.rotation],
+  //       id * 4
+  //     );
+  //   }
+  // }
+  // puzzleDataTex.needsUpdate = true;
+
+  // console.timeEnd("selection");
+
+  // // const id =
+  // //   (pixelBuffer[0] << 16) | (pixelBuffer[1] << 8) | pixelBuffer[2];
+
+  // selection.classList.toggle("visible", false);
+  // dragging = false;
 });
 
 // =============================================
@@ -694,6 +741,7 @@ const { verticalLines, horizontalLines, pieces, pieceSize } =
 // camera.lookAt(sizeX / 1.5, sizeY / 1.25, 0);
 
 const allLines = [...verticalLines, ...horizontalLines];
+// const lineMap = new Map<number, IConnectorLine>();
 for (let l of allLines) {
   if (!l.isBorder) {
     const [start, end] = [l.points[0], l.points[1]];
@@ -704,6 +752,7 @@ for (let l of allLines) {
     const curve = new THREE.SplineCurve(points.slice(1, -1));
     l.points = [start, ...curve.getPoints(20), end];
   }
+  // lineMap.set(l.connectionId, l);
 }
 
 const tableSize = { topLeft: new Vector2(), bottomRight: new Vector2() };
@@ -721,6 +770,9 @@ for (const piece of pieces) {
       points.push(...pointsInLine.slice(0, -1));
     }
     endPoint = pointsInLine[pointsInLine.length - 1];
+
+    // add piece to line as 'neighbour'
+    line.neighbours.push(piece);
   }
 
   // clone every point so we are free to modify without breaking shit
@@ -735,9 +787,10 @@ for (const piece of pieces) {
   const pos = piece.center.clone().multiplyScalar(1.6);
   // const pos = piece.center;
   piece.position.set(pos.x, pos.y, 0);
-  piece.rotation = THREE.MathUtils.degToRad(
-    Math.ceil((Math.random() * 360) / 90) * 90
-  );
+  // @todo: reenable random rotation
+  // piece.rotation = THREE.MathUtils.degToRad(
+  //   Math.ceil((Math.random() * 360) / 90) * 90
+  // );
 
   piece.points = offsetPuzzlePoints(points, -0.005 * pieceSize.x);
 
@@ -756,7 +809,8 @@ for (const piece of pieces) {
 }
 // cleanup line point allocations (no longer needed)
 for (let l of allLines) {
-  l.points = [];
+  // set points to start and end only, needed for snapping logic
+  l.points = [l.points[0], l.points[l.points.length - 1]];
 }
 console.timeEnd("puzzlegen");
 
@@ -868,6 +922,13 @@ const pickMesh = new THREE.Mesh(
 );
 pickMesh.frustumCulled = false;
 pickingScene.add(pickMesh);
+
+const sphere = new SphereGeometry(0.5, 4);
+const sphereMat = new MeshBasicMaterial({ color: 0xff0000 });
+const snapA = new THREE.Mesh(sphere, sphereMat);
+const snapB = new THREE.Mesh(sphere, sphereMat);
+scene.add(snapA);
+scene.add(snapB);
 
 render();
 console.timeEnd("render");
