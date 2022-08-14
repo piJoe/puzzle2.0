@@ -381,6 +381,22 @@ const pickingTarget = new THREE.WebGLRenderTarget(
   }
 );
 
+function updateCameraViewport(tableSize: {
+  topLeft: Vector2;
+  bottomRight: Vector2;
+}) {
+  const aspect = window.innerWidth / window.innerHeight;
+
+  const size = tableSize.bottomRight.clone().sub(tableSize.topLeft);
+  const len = size.x > size.y ? size.x : size.y;
+
+  camera.left = (-aspect * len) / 2;
+  camera.right = (aspect * len) / 2;
+  camera.top = len / 2;
+  camera.bottom = -len / 2;
+  camera.updateProjectionMatrix();
+}
+
 // const camera = new THREE.PerspectiveCamera(
 //   45,
 //   window.innerWidth / window.innerHeight,
@@ -399,8 +415,10 @@ camera.position.setZ(100);
 
 window.addEventListener("resize", onWindowResize, false);
 function onWindowResize() {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
+  // const aspect = window.innerWidth / window.innerHeight;
+  // camera.aspect = aspect;
+  // camera.updateProjectionMatrix();
+  updateCameraViewport(tableSize);
   renderer.setSize(window.innerWidth, window.innerHeight);
   pickingTarget.setSize(window.innerWidth, window.innerHeight);
   // render();
@@ -524,7 +542,11 @@ canvas.addEventListener("mousedown", (e) => {
       break;
     case 1: // middle-click
       camDragging = true;
-      lastPos.set(x, y, 0);
+      lastPos.set(
+        (x / window.innerWidth) * (camera.right * 2),
+        (y / window.innerHeight) * (camera.bottom * 2),
+        0
+      );
       break;
     case 2: // right-click
       for (const id of selected) {
@@ -556,8 +578,12 @@ canvas.addEventListener(
     };
 
     if (camDragging) {
-      const moved = new Vector3(x - lastPos.x, (y - lastPos.y) * -1, 0);
-      lastPos.set(x, y, 0);
+      let [xd, yd] = [
+        (x / window.innerWidth) * (camera.right * 2),
+        (y / window.innerHeight) * (camera.bottom * 2),
+      ];
+      const moved = new Vector3(xd - lastPos.x, yd - lastPos.y, 0);
+      lastPos.set(xd, yd, 0);
 
       camera.position.sub(moved.divideScalar(camera.zoom));
       return;
@@ -649,7 +675,7 @@ canvas.addEventListener("mouseup", (e) => {
 
 console.time("puzzlegen");
 // @todo: suggest minimum px density of 64x64px, meaning we set count to (width/64) * (height/64)
-const [sizeX, sizeY, count] = [496, 830, 200];
+const [sizeX, sizeY, count] = [6000 / 8, 4000 / 8, 2000];
 
 const { verticalLines, horizontalLines, pieces, pieceSize } =
   generateGridByRealSize(sizeX, sizeY, count);
@@ -724,10 +750,9 @@ for (let l of allLines) {
 }
 console.timeEnd("puzzlegen");
 
-console.log(tableSize);
-
 // recenter camera
 window.camera = camera;
+updateCameraViewport(tableSize);
 // camera.left = tableSize.topLeft.x;
 // camera.top = tableSize.topLeft.y;
 // camera.right = tableSize.bottomRight.x;
@@ -812,7 +837,7 @@ puzzleDataTex.needsUpdate = true;
 const puzzleSize = new THREE.Vector2(puzzleDataSize, puzzleDataSize);
 const m = new PuzzleMaterial(puzzleSize, puzzleDataTex);
 
-loader.load("/imgs/sailormoon.jpg", (texture) => {
+loader.load("/imgs/japan-bla.jpg", (texture) => {
   texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
   texture.minFilter = THREE.LinearFilter;
   texture.needsUpdate = true;
