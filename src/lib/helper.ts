@@ -1,4 +1,4 @@
-import { Vector3, Vector2, OrthographicCamera, Camera } from "three";
+import { Vector3, Vector2, OrthographicCamera, Camera, Matrix3 } from "three";
 
 export function nextPowerOf2(i: number): number {
   return 1 << Math.ceil(Math.log2(i));
@@ -27,4 +27,11 @@ export function posToWorldPos(
   }
   pos.copy(cam.position).add(vec);
   return pos;
+}
+
+export function rotateZ(angle: number): Matrix3 {
+  const s = Math.sin(angle);
+  const c = Math.cos(angle);
+
+  return new Matrix3().set(c, s, 0.0, -s, c, 0.0, 0.0, 0.0, 1.0);
 }

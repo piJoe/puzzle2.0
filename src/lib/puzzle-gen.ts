@@ -1,6 +1,6 @@
 import * as THREE from "three";
 import Prando from "prando";
-import { nextPowerOf2, posToWorldPos, toVector2 } from "./helper";
+import { nextPowerOf2, posToWorldPos, rotateZ, toVector2 } from "./helper";
 import { PuzzleMaterial } from "./materials/puzzle-material";
 import { PuzzlePickingMaterial } from "./materials/puzzle-picking-material";
 import {
@@ -441,9 +441,22 @@ function onWindowResize() {
   pickingTarget.setSize(window.innerWidth, window.innerHeight);
   // render();
 }
-const pickingScene = new THREE.Scene();
 
+const listener = new THREE.AudioListener();
+camera.add(listener);
+
+const click = new THREE.Audio(listener);
+const audioLoader = new THREE.AudioLoader();
+audioLoader.load("/static/sounds/snap.mp3", function (buffer) {
+  click.setBuffer(buffer);
+  click.setVolume(0.6);
+  // click.setRefDistance(20);
+});
+
+const pickingScene = new THREE.Scene();
 const scene = new THREE.Scene();
+
+scene.add(click);
 
 const selection = document.getElementById("selection")!;
 function renderSelectionArea(posA, posB) {
@@ -517,6 +530,45 @@ function select(startPos, endPos) {
   return [...ids.keys()];
 }
 
+function snapPieces(piece: IPuzzlePiece) {
+  // find all neighbours by piece.lines
+  for (const l of piece.lines) {
+    const neighbour = l.neighbours.find((p) => p !== piece);
+
+    if (!neighbour) continue;
+    //console.log("NEIGHBOUR:", neighbour.rotation, "SELF:", piece.rotation);
+    if (neighbour.rotation !== piece.rotation) continue;
+
+    const rotationMatrix = rotateZ(piece.rotation);
+
+    // snap to first neighbour
+    const neighbourSnap = l.points[0]
+      .clone()
+      .sub(neighbour.center)
+      .applyMatrix3(rotationMatrix)
+      .add(neighbour.position);
+    const mySnap = l.points[0]
+      .clone()
+      .sub(piece.center)
+      .applyMatrix3(rotationMatrix)
+      .add(piece.position);
+
+    const distance = neighbourSnap.distanceTo(mySnap);
+
+    if (distance > puzzleSnapDistance) {
+      continue;
+    }
+    // snapA.position.set(neighbourSnap.x, neighbourSnap.y, 1);
+    // snapB.position.set(mySnap.x, mySnap.y, 1);
+
+    piece.position.add(neighbourSnap.sub(mySnap) as unknown as Vector3);
+    click.play();
+    // console.log(neighbourSnap, mySnap);
+
+    break;
+  }
+}
+
 let dragging = false;
 let camDragging = false;
 let startPos = { x: 0, y: 0 };
@@ -528,7 +580,7 @@ canvas.addEventListener("contextmenu", (e) => {
   e.stopPropagation();
 });
 canvas.addEventListener("wheel", (e) => {
-  console.log(e);
+  // console.log(e);
   e.preventDefault();
   e.stopPropagation();
   camera.zoom += e.deltaY * -0.005;
@@ -549,7 +601,7 @@ canvas.addEventListener("mousedown", (e) => {
   // renderSelectionArea(startPos, { x, y });
 
   selected = select(startPos, startPos);
-  console.log(selected);
+  // console.log(selected);
 
   switch (e.button) {
     case 0: // left-click
@@ -572,6 +624,10 @@ canvas.addEventListener("mousedown", (e) => {
           const piece = pieces[id - 1];
           // piece.position.add(moved);
           piece.rotation = (piece.rotation + Math.PI / 2) % (Math.PI * 2);
+
+          snapPieces(piece);
+          piece.position.setZ(0.0);
+
           puzzleData.set(
             [
               piece.position.x,
@@ -651,46 +707,34 @@ canvas.addEventListener(
 canvas.addEventListener("mouseup", (e) => {
   e.preventDefault();
   e.stopPropagation();
-  dragging = false;
-  camDragging = false;
 
-  for (const id of selected) {
-    if (id > 0) {
-      const piece = pieces[id - 1];
+  if (dragging) {
+    dragging = false;
+    for (const id of selected) {
+      if (id > 0) {
+        const piece = pieces[id - 1];
 
-      // find all neighbours by piece.lines
-      for (const l of piece.lines) {
-        const neighbour = l.neighbours.find((p) => p !== piece);
-        if (!neighbour) continue;
+        snapPieces(piece);
 
-        // snap to first neighbour
-        const neighbourSnap = l.points[0]
-          .clone()
-          .sub(neighbour.center)
-          .add(neighbour.position);
-        const mySnap = l.points[0]
-          .clone()
-          .sub(piece.center)
-          .add(piece.position);
-
-        // snapA.position.set(neighbourSnap.x, neighbourSnap.y, 1);
-        // snapB.position.set(mySnap.x, mySnap.y, 1);
-
-        piece.position.add(neighbourSnap.sub(mySnap) as unknown as Vector3);
-        // console.log(neighbourSnap, mySnap);
-
-        break;
+        piece.position.setZ(0.0);
+        puzzleData.set(
+          [
+            piece.position.x,
+            piece.position.y,
+            piece.position.z,
+            piece.rotation,
+          ],
+          id * 4
+        );
       }
-
-      piece.position.setZ(0.0);
-      puzzleData.set(
-        [piece.position.x, piece.position.y, piece.position.z, piece.rotation],
-        id * 4
-      );
     }
+    selected = [];
+  }
+
+  if (camDragging) {
+    camDragging = false;
   }
   puzzleDataTex.needsUpdate = true;
-  selected = [];
   return;
 
   // const { x, y } = {
@@ -735,6 +779,9 @@ const [sizeX, sizeY, count] = [6000 / 8, 4000 / 8, 2000];
 
 const { verticalLines, horizontalLines, pieces, pieceSize } =
   generateGridByRealSize(sizeX, sizeY, count);
+
+const puzzleGapSize = 0.005 * ((pieceSize.x + pieceSize.y) / 2);
+const puzzleSnapDistance = puzzleGapSize * 20;
 
 // refocus camera
 // camera.position.set(sizeX / 1.5, sizeY / 1.25, 50);
@@ -787,12 +834,11 @@ for (const piece of pieces) {
   const pos = piece.center.clone().multiplyScalar(1.6);
   // const pos = piece.center;
   piece.position.set(pos.x, pos.y, 0);
-  // @todo: reenable random rotation
-  // piece.rotation = THREE.MathUtils.degToRad(
-  //   Math.ceil((Math.random() * 360) / 90) * 90
-  // );
+  piece.rotation =
+    THREE.MathUtils.degToRad(Math.ceil((Math.random() * 360) / 90) * 90) %
+    (Math.PI * 2);
 
-  piece.points = offsetPuzzlePoints(points, -0.005 * pieceSize.x);
+  piece.points = offsetPuzzlePoints(points, puzzleGapSize * -1);
 
   if (piece.position.x < tableSize.topLeft.x) {
     tableSize.topLeft.x = piece.position.x;
