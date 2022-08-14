@@ -381,19 +381,28 @@ const pickingTarget = new THREE.WebGLRenderTarget(
   }
 );
 
-function updateCameraViewport(tableSize: {
-  topLeft: Vector2;
-  bottomRight: Vector2;
-}) {
-  const aspect = window.innerWidth / window.innerHeight;
+function updateCameraViewport(sizeX, sizeY) {
+  let aspect = window.innerWidth / window.innerHeight;
 
-  const size = tableSize.bottomRight.clone().sub(tableSize.topLeft);
+  // const size = tableSize.bottomRight.clone().sub(tableSize.topLeft);
+  const size = { x: sizeX, y: sizeY };
   const len = size.x > size.y ? size.x : size.y;
 
   camera.left = (-aspect * len) / 2;
   camera.right = (aspect * len) / 2;
   camera.top = len / 2;
   camera.bottom = -len / 2;
+
+  // portrait device
+  if (aspect < 1.0) {
+    aspect = window.innerHeight / window.innerWidth;
+
+    camera.left = -len / 2;
+    camera.right = len / 2;
+    camera.top = (aspect * len) / 2;
+    camera.bottom = (-aspect * len) / 2;
+  }
+
   camera.updateProjectionMatrix();
 }
 
@@ -418,7 +427,7 @@ function onWindowResize() {
   // const aspect = window.innerWidth / window.innerHeight;
   // camera.aspect = aspect;
   // camera.updateProjectionMatrix();
-  updateCameraViewport(tableSize);
+  updateCameraViewport(sizeX, sizeY);
   renderer.setSize(window.innerWidth, window.innerHeight);
   pickingTarget.setSize(window.innerWidth, window.innerHeight);
   // render();
@@ -724,6 +733,7 @@ for (const piece of pieces) {
   );
   piece.center = bb.getCenter(new THREE.Vector2());
   const pos = piece.center.clone().multiplyScalar(1.6);
+  // const pos = piece.center;
   piece.position.set(pos.x, pos.y, 0);
   piece.rotation = THREE.MathUtils.degToRad(
     Math.ceil((Math.random() * 360) / 90) * 90
@@ -752,7 +762,12 @@ console.timeEnd("puzzlegen");
 
 // recenter camera
 window.camera = camera;
-updateCameraViewport(tableSize);
+updateCameraViewport(sizeX, sizeY);
+camera.position.set(
+  (tableSize.bottomRight.x - tableSize.topLeft.x) / 2,
+  (tableSize.bottomRight.y - tableSize.topLeft.y) / 2,
+  camera.position.z
+);
 // camera.left = tableSize.topLeft.x;
 // camera.top = tableSize.topLeft.y;
 // camera.right = tableSize.bottomRight.x;
@@ -839,7 +854,7 @@ const m = new PuzzleMaterial(puzzleSize, puzzleDataTex);
 
 loader.load("/imgs/japan-bla.jpg", (texture) => {
   texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  texture.minFilter = THREE.LinearFilter;
+  texture.minFilter = THREE.LinearMipMapLinearFilter;
   texture.needsUpdate = true;
   m.updateMap(texture);
 });
