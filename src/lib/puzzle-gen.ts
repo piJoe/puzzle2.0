@@ -502,7 +502,7 @@ function select(startPos, endPos) {
 
   const pixelBuffer = new Uint8Array(width * height * 4);
 
-  renderSelection();
+  renderGPUPickingScene();
   renderer.readRenderTargetPixels(
     pickingTarget,
     startPos.x > endPos.x ? endPos.x : startPos.x,
@@ -561,8 +561,13 @@ function snapPieces(piece: IPuzzlePiece) {
     // snapA.position.set(neighbourSnap.x, neighbourSnap.y, 1);
     // snapB.position.set(mySnap.x, mySnap.y, 1);
 
+    // @todo: maybe store all snaps instead of executing first directly, then sort by distance, closest wins?
     piece.position.add(neighbourSnap.sub(mySnap) as unknown as Vector3);
     click.play();
+    document.querySelector("#snap-fx")?.classList.toggle("play", true);
+    window.setTimeout(() => {
+      document.querySelector("#snap-fx")?.classList.toggle("play", false);
+    }, 200);
     // console.log(neighbourSnap, mySnap);
 
     break;
@@ -976,7 +981,6 @@ const snapB = new THREE.Mesh(sphere, sphereMat);
 scene.add(snapA);
 scene.add(snapB);
 
-render();
 console.timeEnd("render");
 
 function render() {
@@ -987,7 +991,9 @@ function render() {
   requestAnimationFrame(render);
 }
 
-function renderSelection() {
+requestAnimationFrame(render);
+
+function renderGPUPickingScene() {
   renderer.setClearColor(0);
   renderer.setRenderTarget(pickingTarget);
   renderer.render(pickingScene, camera);
