@@ -3,13 +3,12 @@ import Prando from "prando";
 import { nextPowerOf2, posToWorldPos, rotateZ, toVector2 } from "./helper";
 import { PuzzleMaterial } from "./materials/puzzle-material";
 import { PuzzlePickingMaterial } from "./materials/puzzle-picking-material";
-import {
-  MeshBasicMaterial,
-  OrthographicCamera,
-  SphereGeometry,
-  Vector2,
-  Vector3,
-} from "three";
+import { OrthographicCamera, Vector2, Vector3 } from "three";
+
+import { FullScreenQuad } from "three/examples/jsm/postprocessing/Pass.js";
+import { PuzzleOutlineMaterial } from "./materials/puzzle-outline-material";
+import { PuzzleSelectionMaterial } from "./materials/puzzle-selection-material";
+import { PuzzleOverlayMaterial } from "./materials/puzzle-overlay-material";
 
 let rng = new Prando("DREIZACKEN");
 // let rng = new Prando();
@@ -374,7 +373,7 @@ const renderer = new THREE.WebGLRenderer({
   antialias: true,
 });
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.floor(window.devicePixelRatio));
+// renderer.setPixelRatio(Math.floor(window.devicePixelRatio));
 document.body.appendChild(renderer.domElement);
 
 console.log(renderer);
@@ -780,13 +779,13 @@ canvas.addEventListener("mouseup", (e) => {
 
 console.time("puzzlegen");
 // @todo: suggest minimum px density of 64x64px, meaning we set count to (width/64) * (height/64)
-const [sizeX, sizeY, count] = [6000 / 8, 4000 / 8, 2000];
+const [sizeX, sizeY, count] = [6000 / 8, 4000 / 8, 5000];
 
 const { verticalLines, horizontalLines, pieces, pieceSize } =
   generateGridByRealSize(sizeX, sizeY, count);
 
 const puzzleGapSize = 0.005 * ((pieceSize.x + pieceSize.y) / 2);
-const puzzleSnapDistance = puzzleGapSize * 20;
+const puzzleSnapDistance = ((pieceSize.x + pieceSize.y) / 2) * 0.15;
 
 // refocus camera
 // camera.position.set(sizeX / 1.5, sizeY / 1.25, 50);
@@ -967,6 +966,7 @@ loader.load("/imgs/japan-bla.jpg", (texture) => {
 const mesh = new THREE.Mesh(geometry, m);
 mesh.frustumCulled = false;
 scene.add(mesh);
+
 const pickMesh = new THREE.Mesh(
   geometry,
   new PuzzlePickingMaterial(puzzleSize, puzzleDataTex)
@@ -974,19 +974,83 @@ const pickMesh = new THREE.Mesh(
 pickMesh.frustumCulled = false;
 pickingScene.add(pickMesh);
 
-const sphere = new SphereGeometry(0.5, 4);
-const sphereMat = new MeshBasicMaterial({ color: 0xff0000 });
-const snapA = new THREE.Mesh(sphere, sphereMat);
-const snapB = new THREE.Mesh(sphere, sphereMat);
-scene.add(snapA);
-scene.add(snapB);
-
 console.timeEnd("render");
 
-function render() {
+const silhoutteBuffer = new THREE.WebGLRenderTarget(
+  window.innerWidth,
+  window.innerHeight,
+  {
+    stencilBuffer: true,
+  }
+);
+
+const outlineBuffer = new THREE.WebGLRenderTarget(
+  window.innerWidth,
+  window.innerHeight,
+  {
+    stencilBuffer: true,
+  }
+);
+
+const sceneBuffer = new THREE.WebGLRenderTarget(
+  window.innerWidth,
+  window.innerHeight
+);
+
+const selectionMat = new PuzzleSelectionMaterial(puzzleSize, puzzleDataTex);
+const outlineMat = new PuzzleOutlineMaterial(silhoutteBuffer);
+const combineMat = new PuzzleOverlayMaterial(outlineBuffer, sceneBuffer);
+const fsQuad = new FullScreenQuad(outlineMat);
+
+function renderWithOutline() {
+  renderer.autoClear = false;
   renderer.setClearColor(0);
-  renderer.setRenderTarget(null);
+  renderer.setClearAlpha(0);
+  renderer.clear();
+
+  // render selected pieces color
+  // @todo: only selected pieces!
+  renderer.setRenderTarget(silhoutteBuffer);
+  renderer.clear();
+  scene.overrideMaterial = selectionMat;
   renderer.render(scene, camera);
+  scene.overrideMaterial = null;
+
+  // render outline
+  // @todo: copy stencil over somehow?
+  renderer.setRenderTarget(outlineBuffer);
+  renderer.clear();
+  // stencilling, again...
+  // scene.overrideMaterial = selectionMat;
+  // renderer.render(scene, camera);
+  // scene.overrideMaterial = null;
+  // finally rendering the outline
+  renderer.clearColor();
+  fsQuad.material = outlineMat;
+  fsQuad.render(renderer);
+
+  // render scene
+  renderer.setRenderTarget(sceneBuffer);
+  renderer.clear();
+  renderer.render(scene, camera);
+
+  // combine
+  renderer.setRenderTarget(null);
+  renderer.clear();
+  fsQuad.material = combineMat;
+  fsQuad.render(renderer);
+
+  renderer.autoClearStencil = true;
+  renderer.autoClearDepth = true;
+}
+
+let i = 0;
+function render() {
+  console.time("render");
+  renderWithOutline();
+  // renderer.setRenderTarget(null);
+  renderer.render(scene, camera);
+  console.timeEnd("render");
 
   requestAnimationFrame(render);
 }

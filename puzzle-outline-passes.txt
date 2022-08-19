@@ -1,0 +1,7 @@
+1. selected pieces als einheitliche farbe rendern -> output texture 'selected' (+ stencil?)
+2. outline generieren in 2-passes
+	1. selected in fragment shader mit -x bis +x in for-loop -> out-x
+	2. out-x in fragment shader mit -y bis +y in for-loop
+3. normale scene rendern -> output texture 'scene'
+4. combine normale scene + outline mit fsQuad (scene + outline)
+	- in fragment shader prüfen outline vorhanden? wenn ja render diese, ansonsten scene-color
