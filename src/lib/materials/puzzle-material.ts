@@ -23,6 +23,7 @@ export class PuzzleMaterial extends ShaderMaterial {
       puzzleDataSize: { value: size },
       puzzleDataTex: { value: dataTex },
       map: { value: map ?? DEFAULT_TEXTURE },
+      nightVision: { value: 0.0 },
     };
 
     this.vertexShader = `
@@ -38,8 +39,11 @@ export class PuzzleMaterial extends ShaderMaterial {
     this.fragmentShader = `
     uniform sampler2D map; 
     varying vec2 uvV;
+    uniform float nightVision;
     void main() {
         vec4 baseCol = texture2D(map, uvV);
+        baseCol *= max(1., (4. * nightVision)); // "contrast"
+        baseCol = min(vec4(1., 1., 1., 1.), baseCol + (0.1 * nightVision)); // lighten
         gl_FragColor = baseCol;
     }`;
   }
@@ -52,6 +56,11 @@ export class PuzzleMaterial extends ShaderMaterial {
   updatePuzzleData(size: Vector2, dataTex: DataTexture) {
     this.uniforms.puzzleDataSize.value.copy(size);
     this.uniforms.puzzleDataTex.value = dataTex;
+    this.needsUpdate = true;
+  }
+
+  updateNightVision(val: number) {
+    this.uniforms.nightVision.value = val;
     this.needsUpdate = true;
   }
 }

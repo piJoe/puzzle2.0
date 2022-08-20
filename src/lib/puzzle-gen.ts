@@ -577,8 +577,18 @@ let dragging = false;
 let camDragging = false;
 let startPos = { x: 0, y: 0 };
 let lastPos = new Vector3(0, 0, 0);
+let selecting = false;
 let selected: number[] = [];
+let nightVisionActive = false;
+let nightVisionVal = 0;
 const canvas = document.querySelector("canvas")!;
+
+window.addEventListener("keyup", (e) => {
+  if (e.key === "q") {
+    nightVisionActive = !nightVisionActive;
+  }
+});
+
 canvas.addEventListener("contextmenu", (e) => {
   e.preventDefault();
   e.stopPropagation();
@@ -601,11 +611,15 @@ canvas.addEventListener("mousedown", (e) => {
   };
   startPos = { x, y };
 
-  // selection.classList.toggle("visible", true);
-  // renderSelectionArea(startPos, { x, y });
-
-  selected = select(startPos, startPos);
-  // console.log(selected);
+  if (e.shiftKey && e.button === 0) {
+    // selecting = true;
+    // selection.classList.toggle("visible", true);
+    // renderSelectionArea(startPos, { x, y });
+    // return;
+  } else {
+    selected = select(startPos, startPos);
+    console.log(selected);
+  }
 
   switch (e.button) {
     case 0: // left-click
@@ -654,6 +668,16 @@ canvas.addEventListener(
       x: e.clientX,
       y: e.clientY,
     };
+
+    if (!e.shiftKey) {
+      selecting = false;
+      selection.classList.toggle("visible", false);
+    }
+    if (selecting && e.shiftKey) {
+      renderSelectionArea(startPos, { x, y });
+      lastPos.set(x, y, 0);
+      return;
+    }
 
     if (camDragging) {
       let [xd, yd] = [
@@ -711,6 +735,14 @@ canvas.addEventListener(
 canvas.addEventListener("mouseup", (e) => {
   e.preventDefault();
   e.stopPropagation();
+
+  if (selecting && e.shiftKey) {
+    selecting = false;
+    selection.classList.toggle("visible", false);
+    selected = select(startPos, lastPos);
+    console.log(selected);
+    return;
+  }
 
   if (dragging) {
     dragging = false;
@@ -878,7 +910,6 @@ camera.position.set(
 // camera.bottom = tableSize.bottomRight.y;
 // camera.updateProjectionMatrix();
 
-console.time("render");
 const geometry = new THREE.BufferGeometry();
 const verticesArr: number[] = [];
 const uvArr: number[] = [];
@@ -974,8 +1005,6 @@ const pickMesh = new THREE.Mesh(
 pickMesh.frustumCulled = false;
 pickingScene.add(pickMesh);
 
-console.timeEnd("render");
-
 const silhoutteBuffer = new THREE.WebGLRenderTarget(
   window.innerWidth,
   window.innerHeight,
@@ -1017,7 +1046,7 @@ function renderWithOutline() {
   scene.overrideMaterial = null;
 
   // render outline
-  // @todo: copy stencil over somehow?
+  // @todo: copy stencil over somehow? (maybe try using WebGLMultipleRenderTargets?)
   renderer.setRenderTarget(outlineBuffer);
   renderer.clear();
   // stencilling, again...
@@ -1046,11 +1075,20 @@ function renderWithOutline() {
 
 let i = 0;
 function render() {
-  console.time("render");
-  renderWithOutline();
-  // renderer.setRenderTarget(null);
+  if (nightVisionActive && nightVisionVal < 1) {
+    nightVisionVal = Math.min(nightVisionVal + 0.075, 1);
+    m.updateNightVision(nightVisionVal);
+  }
+  if (!nightVisionActive && nightVisionVal > 0) {
+    nightVisionVal = Math.max(nightVisionVal - 0.2, 0);
+    m.updateNightVision(nightVisionVal);
+  }
+  // console.time("render");
+  // renderWithOutline();
+  renderer.setRenderTarget(null);
+  renderer.setClearColor(0x040404);
   renderer.render(scene, camera);
-  console.timeEnd("render");
+  // console.timeEnd("render");
 
   requestAnimationFrame(render);
 }
