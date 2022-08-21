@@ -42,8 +42,9 @@ export class PuzzleMaterial extends ShaderMaterial {
     uniform float nightVision;
     void main() {
         vec4 baseCol = texture2D(map, uvV);
-        baseCol *= max(1., (4. * nightVision)); // "contrast"
-        baseCol = min(vec4(1., 1., 1., 1.), baseCol + (0.1 * nightVision)); // lighten
+        baseCol = 0.5 + max(1., nightVision * 1.5) * (baseCol - 0.5); // contrast
+        // baseCol *= max(1., (4. * nightVision)); // exposure
+        baseCol = baseCol + (0.35 * nightVision); // brightness
         gl_FragColor = baseCol;
     }`;
   }

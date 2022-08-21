@@ -540,7 +540,7 @@ function snapPieces(piece: IPuzzlePiece) {
 
     const rotationMatrix = rotateZ(piece.rotation);
 
-    // snap to first neighbour
+    // snap to neighbour
     const neighbourSnap = l.points[0]
       .clone()
       .sub(neighbour.center)
@@ -811,7 +811,7 @@ canvas.addEventListener("mouseup", (e) => {
 
 console.time("puzzlegen");
 // @todo: suggest minimum px density of 64x64px, meaning we set count to (width/64) * (height/64)
-const [sizeX, sizeY, count] = [6000 / 8, 4000 / 8, 5000];
+const [sizeX, sizeY, count] = [2000, 2000, 4000];
 
 const { verticalLines, horizontalLines, pieces, pieceSize } =
   generateGridByRealSize(sizeX, sizeY, count);
@@ -958,13 +958,14 @@ for (let i in pieces) {
 
     // add to modelId array
     modelIdArr.push(modelId, modelId, modelId);
-
-    // set everything in puzzleData texture
-    puzzleData.set(
-      [piece.position.x, piece.position.y, piece.position.z, piece.rotation],
-      modelId * 4
-    );
   }
+
+  // set everything in puzzleData texture
+  puzzleData.set(
+    [piece.position.x, piece.position.y, piece.position.z, piece.rotation],
+    modelId * 4
+  );
+
   // cleanup piece point allocations (no longer needed)
   piece.points = [];
 }
@@ -987,7 +988,7 @@ puzzleDataTex.needsUpdate = true;
 const puzzleSize = new THREE.Vector2(puzzleDataSize, puzzleDataSize);
 const m = new PuzzleMaterial(puzzleSize, puzzleDataTex);
 
-loader.load("/imgs/japan-bla.jpg", (texture) => {
+loader.load("/imgs/moon.jpg", (texture) => {
   texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
   texture.minFilter = THREE.LinearMipMapLinearFilter;
   texture.needsUpdate = true;

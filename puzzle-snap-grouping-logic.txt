@@ -1,0 +1,29 @@
+class JigsawPuzzle() {}
+- generate(size, pieces, seed)
+- exportJSON() -> aktuellen state (seed, size, pieces, texture, positions/rotations der einzelnen pieces, usw) als JSON exportieren
+- loadJSON() -> load, wie generate nur eben aus den Informationen der JSON raus
+
+class PuzzlePiece() {}
+- getNeighbours() -> fertig berechnete snappoints und jeweils zugehöriger neighbour, ggfs. direkt mit jeweiliger distance
+- getGroup() -> returned group wenn existiert
+- joinGroup(group)
+- removeConnection(id) -> connection-line/snappoint aus piece komplett löschen (nach einem snap und join in group)
+    -> evtl darf ich die noch nicht komplett löschen, weil ich die nach einer group-rotation wieder brauche um die teile miteinander zu verbinden?
+- die üblichen dinge wie move, rotate, usw...
+
+class PuzzlePieceGroup() {}
+- pieces: []
+- getNeighbours() -> getNeighbours()-call auf alle pieces in der group, aggregiert
+- getPieces() -> this.pieces;
+- getCenter() -> centerposition aller connecteten pieces, benötigt für rotation
+- die üblichen dinge wie move, rotate, usw.. -> anwenden auf jeweils jedes einzelne piece
+
+//-------
+
+snap:
+- check auf group
+- wenn group -> connection-points der group aggregieren, calculations anwenden
+- dann wie gehabt verbinden
+- am ende neues piece in group aufnehmen
+- wenn beide teile einer group sind, merge group (richtung ist mir egal)
+- verbundene connection aus liste der connection-points löschen
