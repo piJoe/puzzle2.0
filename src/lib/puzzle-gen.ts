@@ -1,6 +1,13 @@
 import * as THREE from "three";
 import Prando from "prando";
-import { nextPowerOf2, posToWorldPos, rotateZ, toVector2 } from "./helper";
+import {
+  calculatePieceCount,
+  nextPowerOf2,
+  offsetOutline,
+  posToWorldPos,
+  rotateZ,
+  toVector2,
+} from "./helper";
 import { PuzzleMaterial } from "./materials/puzzle-material";
 import { PuzzlePickingMaterial } from "./materials/puzzle-picking-material";
 import { OrthographicCamera, Vector2, Vector3 } from "three";
@@ -240,129 +247,6 @@ function generateGrid(
   };
 }
 
-function calculatePieceCount(fullWidth, fullHeight, targetCount) {
-  const ratio_w = fullWidth / fullHeight;
-  const ratio_h = fullHeight / fullWidth;
-
-  let pieceCountW = Math.round(Math.sqrt(targetCount * ratio_w));
-  let pieceCountH = Math.round(Math.sqrt(targetCount * ratio_h));
-
-  // fixes min target count
-  while (pieceCountH * pieceCountW < targetCount) {
-    if (pieceCountH < pieceCountW) {
-      pieceCountW++;
-    } else {
-      pieceCountH++;
-    }
-  }
-
-  return {
-    x: pieceCountW,
-    y: pieceCountH,
-    total: pieceCountH * pieceCountW,
-  };
-}
-
-function generateGridByRealSize(width, height, count) {
-  const { x, y } = calculatePieceCount(width, height, count);
-  const pieceSize = {
-    x: width / x,
-    y: height / y,
-  };
-
-  return { pieceSize, ...generateGrid(x, y, false, pieceSize) };
-}
-
-function offsetPuzzlePoints(points, offset) {
-  let result: THREE.Vector2[] = [];
-
-  offset = new THREE.BufferAttribute(new Float32Array([offset, 0, 0]), 3);
-
-  for (let i = 0; i < points.length; i++) {
-    let v1 = new THREE.Vector2().subVectors(
-      points[i - 1 < 0 ? points.length - 1 : i - 1],
-      points[i]
-    );
-    let v2 = new THREE.Vector2().subVectors(
-      points[i + 1 == points.length ? 0 : i + 1],
-      points[i]
-    );
-    let angle = v2.angle() - v1.angle();
-    let halfAngle = angle * 0.5;
-
-    let hA = halfAngle;
-    let tA = v2.angle() + Math.PI * 0.5;
-
-    let shift = Math.tan(hA - Math.PI * 0.5);
-    let shiftMatrix = new THREE.Matrix4().set(
-      1,
-      0,
-      0,
-      0,
-      -shift,
-      1,
-      0,
-      0,
-      0,
-      0,
-      1,
-      0,
-      0,
-      0,
-      0,
-      1
-    );
-
-    let tempAngle = tA;
-    let rotationMatrix = new THREE.Matrix4().set(
-      Math.cos(tempAngle),
-      -Math.sin(tempAngle),
-      0,
-      0,
-      Math.sin(tempAngle),
-      Math.cos(tempAngle),
-      0,
-      0,
-      0,
-      0,
-      1,
-      0,
-      0,
-      0,
-      0,
-      1
-    );
-
-    let translationMatrix = new THREE.Matrix4().set(
-      1,
-      0,
-      0,
-      points[i].x,
-      0,
-      1,
-      0,
-      points[i].y,
-      0,
-      0,
-      1,
-      0,
-      0,
-      0,
-      0,
-      1
-    );
-
-    let cloneOffset = offset.clone();
-    cloneOffset.applyMatrix4(shiftMatrix);
-    cloneOffset.applyMatrix4(rotationMatrix);
-    cloneOffset.applyMatrix4(translationMatrix);
-
-    result.push(new THREE.Vector2(cloneOffset.getX(0), cloneOffset.getY(0)));
-  }
-
-  return result;
-}
-
 // =============================================
 // SETUP THREE.JS
 // =============================================
@@ -522,7 +406,7 @@ function select(startPos, endPos) {
       (pixelBuffer[i + 1] << 8) |
       pixelBuffer[i + 2];
 
-    if (!ids.has(id)) {
+    if (!ids.has(id) && id !== 0) {
       ids.set(id, true);
     }
   }
@@ -580,26 +464,32 @@ let lastPos = new Vector3(0, 0, 0);
 let selecting = false;
 let selected: number[] = [];
 let nightVisionActive = false;
-let nightVisionVal = 0;
 const canvas = document.querySelector("canvas")!;
 
 window.addEventListener("keyup", (e) => {
   if (e.key === "q") {
     nightVisionActive = !nightVisionActive;
+    m.updateNightVision(nightVisionActive ? 1 : 0);
   }
 });
 
-canvas.addEventListener("contextmenu", (e) => {
+window.addEventListener("contextmenu", (e) => {
   e.preventDefault();
   e.stopPropagation();
 });
 canvas.addEventListener("wheel", (e) => {
   // console.log(e);
-  e.preventDefault();
+  // e.preventDefault();
   e.stopPropagation();
-  camera.zoom += e.deltaY * -0.005;
-  if (camera.zoom < 1) camera.zoom = 1;
+  const prevZoom = camera.zoom;
+  // camera.zoom += e.deltaY * -0.005;
+  camera.zoom *= 1 + e.deltaY * -0.001;
+  if (camera.zoom < 0.5) camera.zoom = 0.5;
   camera.updateProjectionMatrix();
+  // zoom to mouse position
+  const camZ = camera.position.z;
+  camera.position.lerp(mousePos, 1 - prevZoom / camera.zoom);
+  camera.position.setZ(camZ);
 });
 canvas.addEventListener("mousedown", (e) => {
   e.preventDefault();
@@ -611,7 +501,7 @@ canvas.addEventListener("mousedown", (e) => {
   };
   startPos = { x, y };
 
-  if (e.shiftKey && e.button === 0) {
+  if (e.ctrlKey && e.button === 0) {
     // selecting = true;
     // selection.classList.toggle("visible", true);
     // renderSelectionArea(startPos, { x, y });
@@ -623,10 +513,19 @@ canvas.addEventListener("mousedown", (e) => {
 
   switch (e.button) {
     case 0: // left-click
-      dragging = true;
-      lastPos.copy(
-        posToWorldPos(x, y, window.innerWidth, window.innerHeight, camera)
-      );
+      if (e.shiftKey) {
+        camDragging = true;
+        lastPos.set(
+          (x / window.innerWidth) * (camera.right * 2),
+          (y / window.innerHeight) * (camera.bottom * 2),
+          0
+        );
+      } else {
+        dragging = true;
+        lastPos.copy(
+          posToWorldPos(x, y, window.innerWidth, window.innerHeight, camera)
+        );
+      }
       break;
     case 1: // middle-click
       camDragging = true;
@@ -661,13 +560,18 @@ canvas.addEventListener("mousedown", (e) => {
       break;
   }
 });
+const mousePos = new Vector3();
 canvas.addEventListener(
-  "pointermove",
+  "mousemove",
   (e) => {
     const { x, y } = {
       x: e.clientX,
       y: e.clientY,
     };
+
+    mousePos.copy(
+      posToWorldPos(x, y, window.innerWidth, window.innerHeight, camera)
+    );
 
     if (!e.shiftKey) {
       selecting = false;
@@ -809,9 +713,19 @@ canvas.addEventListener("mouseup", (e) => {
 // GRID GEDÖHNS
 // =============================================
 
+export function generateGridByRealSize(width, height, count) {
+  const { x, y } = calculatePieceCount(width, height, count);
+  const pieceSize = {
+    x: width / x,
+    y: height / y,
+  };
+
+  return { pieceSize, ...generateGrid(x, y, false, pieceSize) };
+}
+
 console.time("puzzlegen");
 // @todo: suggest minimum px density of 64x64px, meaning we set count to (width/64) * (height/64)
-const [sizeX, sizeY, count] = [2000, 2000, 4000];
+const [sizeX, sizeY, count] = [3840 / 2, 1908 / 2, 2000];
 
 const { verticalLines, horizontalLines, pieces, pieceSize } =
   generateGridByRealSize(sizeX, sizeY, count);
@@ -831,7 +745,7 @@ for (let l of allLines) {
     randomMove(l.points[0], l.points[1]);
     const points = createPuzzleConn(l.points[0], l.points[1]);
 
-    // round off our newly create points
+    // round off our newly created points
     const curve = new THREE.SplineCurve(points.slice(1, -1));
     l.points = [start, ...curve.getPoints(20), end];
   }
@@ -874,7 +788,7 @@ for (const piece of pieces) {
     THREE.MathUtils.degToRad(Math.ceil((Math.random() * 360) / 90) * 90) %
     (Math.PI * 2);
 
-  piece.points = offsetPuzzlePoints(points, puzzleGapSize * -1);
+  piece.points = offsetOutline(points, puzzleGapSize * -1);
 
   if (piece.position.x < tableSize.topLeft.x) {
     tableSize.topLeft.x = piece.position.x;
@@ -988,7 +902,7 @@ puzzleDataTex.needsUpdate = true;
 const puzzleSize = new THREE.Vector2(puzzleDataSize, puzzleDataSize);
 const m = new PuzzleMaterial(puzzleSize, puzzleDataTex);
 
-loader.load("/imgs/moon.jpg", (texture) => {
+loader.load("/imgs/schussenried.jpg", (texture) => {
   texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
   texture.minFilter = THREE.LinearMipMapLinearFilter;
   texture.needsUpdate = true;
@@ -1005,6 +919,12 @@ const pickMesh = new THREE.Mesh(
 );
 pickMesh.frustumCulled = false;
 pickingScene.add(pickMesh);
+
+// const mouseGeo = new THREE.SphereGeometry(2, 8);
+// const mouseMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+// const mouseMesh = new THREE.Mesh(mouseGeo, mouseMat);
+// mouseMesh.position.copy(mousePos);
+// scene.add(mouseMesh);
 
 const silhoutteBuffer = new THREE.WebGLRenderTarget(
   window.innerWidth,
@@ -1076,14 +996,17 @@ function renderWithOutline() {
 
 let i = 0;
 function render() {
-  if (nightVisionActive && nightVisionVal < 1) {
-    nightVisionVal = Math.min(nightVisionVal + 0.075, 1);
-    m.updateNightVision(nightVisionVal);
-  }
-  if (!nightVisionActive && nightVisionVal > 0) {
-    nightVisionVal = Math.max(nightVisionVal - 0.2, 0);
-    m.updateNightVision(nightVisionVal);
-  }
+  // if (nightVisionActive && nightVisionVal < 1) {
+  //   nightVisionVal = Math.min(nightVisionVal + 0.075, 1);
+  //   m.updateNightVision(nightVisionVal);
+  // }
+  // if (!nightVisionActive && nightVisionVal > 0) {
+  //   nightVisionVal = Math.max(nightVisionVal - 0.2, 0);
+  //   m.updateNightVision(nightVisionVal);
+  // }
+
+  // mouseMesh.position.copy(mousePos).setZ(1);
+
   // console.time("render");
   // renderWithOutline();
   renderer.setRenderTarget(null);
